@@ -1,6 +1,5 @@
 import csv
 import time
-from itertools import combinations
 
 
 class Action:
@@ -8,10 +7,24 @@ class Action:
         self.name = name
         self.cost = cost
         self.profit_percentage = profit_percentage
-        self.profit = cost * profit_percentage / 100
+        self.profit = (cost * profit_percentage) / 100
+        self.ratio = profit_percentage / 100
 
     def __str__(self):
         """Représente l'action sous forme de chaîne de caractères"""
+        return f"{self.name} - Coût: {self.cost}€, Bénéfice: {self.profit_percentage}%, Profit: {self.profit:.2f}€"
+
+    def __lt__(self, other):
+        """
+        Compare les actions par ratio profit/coût décroissant.
+        """
+        # Utilisé pour le tri dans sorted()
+        return self.ratio < other.ratio
+
+    def __repr__(self):
+        """
+        Représente l'action sous forme de chaîne de caractères pour le débogage.
+        """
         return f"{self.name} - Coût: {self.cost}€, Bénéfice: {self.profit_percentage}%, Profit: {self.profit:.2f}€"
 
 
@@ -47,47 +60,41 @@ def load_actions_from_csv(file_path):
     return actions
 
 
-def bruteforce_best_investment(actions, max_budget=500):
+def greedy_investment(actions, max_budget=500):
     """
-    Trouve la meilleure combinaison d'actions pour maximiser le profit en testant
-    toutes les combinaisons possibles
+    Trouve une combinaison d'actions en utilisant une approche gloutonne.
+    Trie les actions par ratio profit/coût et les sélectionne tant que le budget le permet.
+
     Arguments:
         actions (list): Liste des objets Action
         max_budget (float): Budget maximum disponible
+
     Returns:
-        tuple: (meilleure_combinaison, coût_total, profit_total)
+        tuple: (combinaison_sélectionnée, coût_total, profit_total)
     """
-    best_combination = []
-    best_profit = 0
-    best_cost = 0
-    total_combinations = 0
-    # Tester toutes les combinaisons possibles, de taille 1 à len(actions)
-    for action_count in range(1, len(actions) + 1):
-        # La fonction combinations de itertools génère toutes les combinaisons
-        # possibles de r actions parmi la liste d'actions
-        for combo in combinations(actions, action_count):
-            total_combinations += 1
-            # Calculer le coût total de cette combinaison
-            total_cost = sum(action.cost for action in combo)
-            # Vérifier si cette combinaison respecte le budget
-            if total_cost <= max_budget:
-                # Calculer le profit total généré par cette combinaison
-                total_profit = sum(action.profit for action in combo)
-                # Si cette combinaison donne un meilleur profit, la garder
-                if total_profit > best_profit:
-                    best_profit = total_profit
-                    best_combination = combo
-                    best_cost = total_cost
-    print(f"Nombre total de combinaisons testées: {total_combinations}")
-    return best_combination, best_cost, best_profit
+    # Trier les actions par ratio profit/coût décroissant
+    sorted_actions = sorted(actions.copy(), reverse=True)
+
+    selected_combination = []
+    total_cost = 0
+    total_profit = 0
+
+    # Parcourir les actions triées et les ajouter si possible
+    for action in sorted_actions:
+        if total_cost + action.cost <= max_budget:
+            selected_combination.append(action)
+            total_cost += action.cost
+            total_profit += action.profit
+
+    return selected_combination, total_cost, total_profit
 
 
 def main():
     start_time = time.time()
-    actions = load_actions_from_csv('csv/actions.csv')
+    actions = load_actions_from_csv('csv/dataset2.csv')
     print(f"Nombre d'actions chargées: {len(actions)}")
 
-    best_combination, best_cost, best_profit = bruteforce_best_investment(actions)
+    best_combination, best_cost, best_profit = greedy_investment(actions)
     print("\nMeilleure combinaison d'actions:")
 
     for action in best_combination:

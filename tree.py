@@ -10,10 +10,29 @@ class Action:
         self.profit = cost * profit_percentage / 100
 
     def __str__(self):
+        """Représente l'action sous forme de chaîne de caractères"""
         return f"{self.name} - Coût: {self.cost}€, Bénéfice: {self.profit_percentage}%, Profit: {self.profit:.2f}€"
 
 
 def load_actions_from_csv(file_path):
+    """
+    Charge les actions depuis un fichier CSV.
+
+    Cette fonction lit un fichier CSV contenant des informations sur les actions
+    et crée une liste d'objets Action. Elle filtre les actions ayant un coût
+    et un pourcentage de profit positifs.
+
+    Args:
+        file_path (str): Chemin vers le fichier CSV contenant les données des actions.
+                         Le fichier doit avoir le format : nom,coût,pourcentage_profit
+
+        list: Liste d'objets Action créés à partir des données du fichier CSV.
+              Chaque objet Action contient un nom, un coût et un pourcentage de profit.
+
+    Note:
+        Le fichier CSV doit avoir un en-tête qui sera ignoré lors de la lecture.
+        Seules les actions avec un coût > 0 et un pourcentage de profit > 0 sont incluses.
+    """
     actions = []
     with open(file_path, 'r', encoding='utf-8') as file:
         csv_reader = csv.reader(file)
@@ -22,7 +41,8 @@ def load_actions_from_csv(file_path):
             name = str(row[0])
             cost = float(row[1])
             profit_percentage = float(row[2])
-            actions.append(Action(name, cost, profit_percentage))
+            if cost > 0 and profit_percentage > 0:
+                actions.append(Action(name, cost, profit_percentage))
     return actions
 
 
@@ -70,6 +90,7 @@ def tree_bruteforce(actions, max_budget=500):
 
     # Fonction récursive pour construire l'arbre et explorer toutes les combinaisons
     def build_tree(node, level):
+        print(f"Exploration du niveau {level} avec le nœud {node.action}")
         # nonlocal pour accéder aux variables de la portée englobante et non pas créer de nouvelles variables locales
         nonlocal best_profit, best_combination, nodes_explored
         nodes_explored += 1
@@ -90,15 +111,27 @@ def tree_bruteforce(actions, max_budget=500):
         # Calculer le coût en ajoutant cette action
         temp_cost, _ = include_node.calculate_cost_profit()
 
-        # Ne construire le sous-arbre que si le budget n'est pas dépassé
+        # construire le sous-arbre que si le budget n'est pas dépassé
         if temp_cost <= max_budget:
-            build_tree(include_node, level + 1)
-        # ne pas construire l'arbre si la renta n'est optimale
+            # Calculer une estimation de rentabilité maximale potentielle pour cette branche
+            remaining_budget = max_budget - temp_cost
+            current_profit = include_node.calculate_cost_profit()[1]
 
-        # Créer l'enfant "exclusion" (ne pas ajouter l'action courante)
+            # Si le profit actuel + profit potentiel est > au meilleur profit trouvé on construit la branche
+            if current_profit + estimate_max_potential_profit(remaining_budget, actions, level + 1) > best_profit:
+                build_tree(include_node, level + 1)  # CONSTRUCTION D'INCLUSION
+            # Sinon on ne construit pas cette branche
+            else:
+                pass
+
+        # Créer l'enfant "exclusion" (ne pas ajouter l'action en cours)
         exclude_node = TreeNode(None, node)
         node.exclude_child = exclude_node
-        build_tree(exclude_node, level + 1)
+        """Ce call à build_tree correspond à l'exploration du chemin où
+        l'action courante n'est pas incluse dans la solution.
+        l'appel est inconditionnel - on explore toujours le chemin d'exclusion."""
+        #
+        build_tree(exclude_node, level + 1)  # CONSTRUCTION D'EXCLUSION
 
     # Construire l'arbre en commençant par la racine
     build_tree(root, 0)
@@ -106,13 +139,43 @@ def tree_bruteforce(actions, max_budget=500):
     # Calculer le coût total de la meilleure combinaison
     best_cost = sum(action.cost for action in best_combination)
 
-    print(f"Nombre de nœuds explorés: {nodes_explored}")
     return best_combination, best_cost, best_profit
 
 
+def estimate_max_potential_profit(remaining_budget, actions, start_level):
+    """
+    Estime le profit maximum qu'on pourrait obtenir avec le budget restant
+    en prenant les actions restantes avec le meilleur ratio profit/coût.
+
+    C'est une estimation optimiste qui suppose qu'on peut prendre des fractions d'actions.
+    """
+    # Trier les actions restantes par rentabilité décroissante
+    remaining_actions = sorted(actions[start_level:],
+                               key=lambda a: a.profit_percentage,
+                               reverse=True)
+
+    potential_profit = 0
+    budget_left = remaining_budget
+
+    for action in remaining_actions:
+        if budget_left >= action.cost:
+            # On peut prendre toute l'action
+            potential_profit += action.profit
+            budget_left -= action.cost
+        else:
+            # On prend une fraction de l'action
+            fraction = budget_left / action.cost
+            potential_profit += action.profit * fraction
+            break
+
+    return potential_profit
+
+
 def main():
+    import sys
+    sys.setrecursionlimit(10000)  # Increase recursion limit
     start_time = time.time()
-    actions = load_actions_from_csv('actions.csv')
+    actions = load_actions_from_csv('csv/actions.csv')
     print(f"Nombre d'actions chargées: {len(actions)}")
 
     best_combination, best_cost, best_profit = tree_bruteforce(actions)
@@ -129,22 +192,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-"""Structure de l'arbre :
-Chaque nœud représente une décision concernant une action spécifique
-Chaque nœud a deux enfants : "include_child" (on prend l'action) et "exclude_child" (on ne prend pas l'action)
-L'arbre a autant de niveaux que d'actions disponibles
-Exploration exhaustive :
-
-L'algorithme construit et parcourt l'arbre complet de façon récursive
-Chaque chemin de la racine à une feuille représente une combinaison d'actions unique
-Toutes les combinaisons possibles sont examinées, comme dans l'algorithme de force brute
-Optimisation de base :
-
-Si à un moment donné le coût d'un chemin dépasse le budget, on arrête l'exploration de cette branche
-Cette optimisation permet d'éviter d'explorer des combinaisons qui ne respectent pas la contrainte de budget
-Trace du meilleur résultat :
-
-À chaque nœud feuille, on compare le profit total avec le meilleur trouvé jusqu'à présent
-Si on trouve une meilleure combinaison, on la sauvegarde"""
